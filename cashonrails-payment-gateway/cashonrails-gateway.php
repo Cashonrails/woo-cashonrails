@@ -38,6 +38,7 @@ function cashonrails_init_gateway() {
 
             $this->title = $this->get_option('title');
             $this->secret_key = $this->get_option('secret_key');
+            $this->currency = $this->get_option('currency');
 
             add_action('woocommerce_update_options_payment_gateways_' . $this->id, [$this, 'process_admin_options']);
         }
@@ -45,19 +46,31 @@ function cashonrails_init_gateway() {
         public function init_form_fields() {
             $this->form_fields = [
                 'enabled' => [
-                    'title' => 'Enable/Disable',
-                    'type' => 'checkbox',
-                    'label' => 'Enable CashOnRails Gateway',
+                    'title'   => 'Enable/Disable',
+                    'type'    => 'checkbox',
+                    'label'   => 'Enable CashOnRails Gateway',
                     'default' => 'yes'
                 ],
                 'title' => [
-                    'title' => 'Title',
-                    'type' => 'text',
+                    'title'   => 'Title',
+                    'type'    => 'text',
                     'default' => 'CashOnRails'
                 ],
                 'secret_key' => [
                     'title' => 'Secret Key',
-                    'type' => 'text'
+                    'type'  => 'text'
+                ],
+                'currency' => [
+                    'title'   => 'Currency',
+                    'type'    => 'select',
+                    'description' => 'Choose the currency to use with this gateway.',
+                    'default' => 'NGN',
+                    'options' => [
+                        'NGN' => 'Nigerian Naira (NGN)',
+                        'USD' => 'US Dollar (USD)',
+                        'EUR' => 'Euro (EUR)',
+                        'GBP' => 'British Pound (GBP)',
+                    ]
                 ]
             ];
         }
@@ -103,7 +116,7 @@ function cashonrails_init_gateway() {
             $payload = json_encode([
                 'email' => $email,
                 'amount' => strval($amount),
-                'currency' => 'NGN',
+                'currency' => $this->currency,
                 'reference' => $reference,
                 'customer_code' => $customer_code,
                 'redirectUrl' => $this->get_return_url($order),
@@ -158,6 +171,7 @@ function cashonrails_init_gateway() {
         $reference = $order->get_meta('_cashonrails_ref');
         if (!$reference) return;
 
+
         $secret_key = get_option('woocommerce_cashonrails_settings')['secret_key'];
         $verify_url = 'https://mainapi.cashonrails.com/api/v1/s2s/transaction/verify/' . $reference;
 
@@ -174,12 +188,14 @@ function cashonrails_init_gateway() {
         $res = json_decode($response, true);
         curl_close($ch);
 
+
+
         if (isset($res['success']) && $res['success'] === true && $res['data']['status'] === 'success') {
             if (!in_array($order->get_status(), ['processing', 'completed'])) {
                 $order->payment_complete($reference);
                 $order->add_order_note('CashOnRails payment verified on return.');
 
-                // 🔄 Update associated subscriptions
+
                 if (function_exists('wcs_get_subscriptions_for_order')) {
                     $subscriptions = wcs_get_subscriptions_for_order($order, ['parent', 'renewal']);
                     foreach ($subscriptions as $subscription) {
